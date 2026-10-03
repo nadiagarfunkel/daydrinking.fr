@@ -1,15 +1,268 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Day Drinking</title>
-  <style>
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-           font-family: system-ui, sans-serif; background: #fdf6ec; color: #2b2118; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apartment crawl</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --head: #B9C2F0;
+    --accent: #B9C2F0;
+    --hot: #FF4D00;
+    --ink: #000000;
+    --paper: #FFFFFF;
+    --muted: #6B6B6B;
+    --off: #E6E6E6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body {
+    font-family: 'Archivo', 'Helvetica Neue', Helvetica, sans-serif;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    -webkit-text-size-adjust: 100%;
+  }
+  header {
+    background: var(--head);
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 12px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 {
+    margin: 0 0 6px; font-size: 23px; font-weight: 700; letter-spacing: -0.04em;
+    line-height: 0.9; text-transform: uppercase;
+  }
+  .meta {
+    display: flex; justify-content: space-between; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  main { padding: 8px 16px 40px; }
+  .row { padding: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+  .line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: center; }
+  label { display: flex; flex-direction: column; gap: 2px; }
+  .kicker { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  .main { font-size: 13px; font-weight: 800; text-transform: uppercase; line-height: 1.1; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .side { display: flex; flex-direction: column; gap: 3px; }
+  .field { display: flex; align-items: center; gap: 6px; }
+  input {
+    flex: 1; min-width: 0; height: 44px; border: 2px solid var(--ink); border-radius: 12px;
+    padding: 0 12px; font: inherit; font-size: 16px; font-weight: 700; color: var(--ink); background: var(--paper);
+  }
+  input::placeholder { color: var(--muted); }
+  input:focus { outline: none; }
+  input:focus-visible, button:focus-visible { outline: 3px solid #2F5BFF; outline-offset: 2px; }
+  button.send {
+    width: 44px; height: 44px; flex: none; border: 0; border-radius: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--ink); color: var(--paper);
+  }
+  button.send:disabled { background: var(--off); color: var(--muted); cursor: not-allowed; }
+  .note { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; min-height: 0; }
+  .note.limit { color: #B33600; }
+  .done { font-size: 11px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pills:empty { display: none; }
+  .pill { font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 999px; background: #EDEDED; color: var(--ink); }
+  footer { padding: 8px 16px 20px; text-align: center; font-size: 9px; letter-spacing: 0.04em; color: var(--muted); }
+  .banner {
+    margin: 12px 16px 0; padding: 10px 12px; border-radius: 12px; background: var(--ink); color: var(--paper);
+    font-size: 12px; font-weight: 700;
+  }
+  .banner[hidden] { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .pill.new { animation: pop .35s ease-out; }
+    @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  }
+</style>
 </head>
 <body>
-  <h1>daydrinking.fr — bientôt</h1>
+<header>
+  <div class="wrap">
+    <h1>aptartment&nbsp;<br>crawl</h1>
+    <div class="meta"><span>answers are Anonymous</span><span>Use full first names</span></div>
+  </div>
+</header>
+<div class="wrap">
+  <div class="banner" id="banner" hidden></div>
+  <main id="list"></main>
+</div>
+<footer>created by nadia x</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+  // ---- 1. Paste your Supabase project details here ----
+  const SUPABASE_URL = 'PASTE_YOUR_PROJECT_URL';
+  const SUPABASE_ANON_KEY = 'PASTE_YOUR_ANON_PUBLIC_KEY';
+  // ------------------------------------------------------
+
+  const PROMPTS = [
+    "Most likely to throw up later",
+    "Most likely to make this an all-nighter",
+    "Most likely to Irish",
+    "Most likely to talk about themselves",
+    "Most likely to speak a different language by the end of the night",
+    "Most likely to break something at someone’s house",
+    "Most likely to say “I’m fine” when they’re actually shitfaced",
+    "Holder of the most gossip",
+    "Smells the best",
+    "Could do a split",
+    "Could say the alphabet backwards",
+    "Most likely to clog someone’s toilet",
+    "Kissed the most people here",
+    "Biggest dick (interpret however you like)",
+    "Most likely to make a milli with feet pics",
+    "Most likely to make a milli in a more normal way",
+    "Most likely to become a cult leader",
+    "Best tits",
+    "Sexiest parents",
+    "Most likely to spread lies",
+    "Most likely to go to heaven",
+    "Most likely to get laid tonight"
+  ];
+  const MAX_PER_Q = 2;
+  const MAX_LEN = 30;
+
+  const answers = PROMPTS.map(() => []);   // [{id, text}]
+  const seen = new Set();
+  const rows = [];
+
+  function getUsed() {
+    try { return JSON.parse(localStorage.getItem('darty-used') || '{}'); } catch (e) { return {}; }
+  }
+  function setUsed(u) {
+    try { localStorage.setItem('darty-used', JSON.stringify(u)); } catch (e) {}
+  }
+  let used = getUsed();
+
+  function showBanner(msg) {
+    const b = document.getElementById('banner');
+    b.textContent = msg; b.hidden = !msg;
+  }
+
+  const arrow = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true"><path d="M4 12h15M13 5l7 7-7 7"/></svg>';
+
+  function build() {
+    const list = document.getElementById('list');
+    PROMPTS.forEach((p, i) => {
+      const pre = 'Most likely to ';
+      const has = p.indexOf(pre) === 0;
+      const main = has ? p.slice(pre.length) : p;
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML =
+        '<div class="line">' +
+          '<label for="q' + i + '">' + (has ? '<span class="kicker">Most likely to</span>' : '') +
+            '<span class="main"></span></label>' +
+          '<div class="side">' +
+            '<div class="field">' +
+              '<input id="q' + i + '" type="text" maxlength="' + MAX_LEN + '" autocomplete="off" autocapitalize="words" enterkeyhint="send" placeholder="Who?">' +
+              '<button class="send" type="button" aria-label="Submit answer" disabled>' + arrow + '</button>' +
+            '</div>' +
+            '<span class="note"></span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pills"></div>';
+      row.querySelector('.main').textContent = main;
+      list.appendChild(row);
+
+      const input = row.querySelector('input');
+      const btn = row.querySelector('button');
+      const note = row.querySelector('.note');
+      const r = { row, input, btn, note, pills: row.querySelector('.pills'), field: row.querySelector('.field') };
+      rows.push(r);
+
+      input.addEventListener('input', () => {
+        const len = input.value.length;
+        btn.disabled = input.value.trim().length === 0;
+        note.className = 'note' + (len >= MAX_LEN ? ' limit' : '');
+        note.textContent = len >= 20 ? len + '/' + MAX_LEN : '';
+      });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send(i); } });
+      btn.addEventListener('click', () => send(i));
+      refreshLimit(i);
+    });
+  }
+
+  function refreshLimit(i) {
+    const r = rows[i];
+    if ((used[i] || 0) >= MAX_PER_Q) {
+      r.field.style.display = 'none';
+      r.note.className = 'done';
+      r.note.textContent = 'Done';
+    }
+  }
+
+  async function send(i) {
+    const r = rows[i];
+    const text = r.input.value.trim().slice(0, MAX_LEN);
+    if (!text || (used[i] || 0) >= MAX_PER_Q) return;
+    r.btn.disabled = true;
+    const { data, error } = await db.from('answers').insert({ q: i, text: text }).select().single();
+    if (error) {
+      r.btn.disabled = false;
+      r.note.className = 'note limit';
+      r.note.textContent = 'Didn’t send. Try again.';
+      return;
+    }
+    used[i] = (used[i] || 0) + 1; setUsed(used);
+    r.input.value = '';
+    r.note.className = 'note';
+    r.note.textContent = 'Sent';
+    setTimeout(() => { if (r.note.textContent === 'Sent') r.note.textContent = ''; }, 1800);
+    add(data, true);
+    refreshLimit(i);
+  }
+
+  function add(rec, fresh) {
+    if (!rec || seen.has(rec.id) || rec.q < 0 || rec.q >= PROMPTS.length) return;
+    seen.add(rec.id);
+    answers[rec.q].push({ id: rec.id, text: rec.text, t: Date.parse(rec.created_at) || Date.now() });
+    renderPills(rec.q, fresh ? rec.text : null);
+    renderTotal();
+  }
+
+  function renderPills(i, freshText) {
+    const groups = {};
+    answers[i].forEach((a) => {
+      const k = a.text.toLowerCase().replace(/\s+/g, ' ');
+      if (!groups[k]) groups[k] = { text: a.text, key: k, count: 0, last: 0 };
+      groups[k].count++; groups[k].last = Math.max(groups[k].last, a.t);
+    });
+    const sorted = Object.values(groups).sort((a, b) => b.count - a.count || b.last - a.last);
+    const freshKey = freshText ? freshText.toLowerCase().replace(/\s+/g, ' ') : null;
+    const box = rows[i].pills;
+    box.innerHTML = '';
+    sorted.forEach((g, n) => {
+      const s = document.createElement('span');
+      s.className = 'pill' + (g.key === freshKey ? ' new' : '');
+      s.textContent = g.count > 1 ? g.text + ' ×' + g.count : g.text;
+      box.appendChild(s);
+    });
+  }
+
+  function renderTotal() {
+
+  }
+
+  let db;
+  async function start() {
+    build();
+    if (SUPABASE_URL.indexOf('PASTE') === 0) {
+      showBanner('Setup needed: add your Supabase URL and key to index.html.');
+      return;
+    }
+    db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const { data, error } = await db.from('answers').select('id,q,text,created_at').order('created_at', { ascending: true }).limit(5000);
+    if (error) { showBanner('Couldn’t load answers. Refresh to try again.'); }
+    (data || []).forEach((rec) => add(rec, false));
+
+    db.channel('answers-feed')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'answers' }, (payload) => add(payload.new, true))
+      .subscribe();
+  }
+  start();
+</script>
 </body>
 </html>
