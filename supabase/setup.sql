@@ -2,7 +2,7 @@
 
 create table if not exists public.answers (
   id         bigint generated always as identity primary key,
-  q          smallint    not null check (q between 0 and 21),          -- index into PROMPTS
+  q          smallint    not null check (q between 0 and 99),          -- index into PROMPTS
   text       text        not null check (char_length(btrim(text)) between 1 and 30),
   created_at timestamptz not null default now()
 );
