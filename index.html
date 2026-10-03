@@ -58,6 +58,9 @@
     background: var(--ink); color: var(--paper);
   }
   button.send:disabled { background: var(--off); color: var(--muted); cursor: not-allowed; }
+  input:disabled { border-color: var(--off); background: var(--off); color: var(--ink); -webkit-text-fill-color: var(--ink); opacity: 1; }
+  button.send.remove { background: var(--paper); color: var(--ink); border: 2px solid var(--ink); }
+  button.send.remove:disabled { border-color: var(--off); }
   .note { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; min-height: 0; }
   .note.limit { color: #B33600; }
   .done { font-size: 11px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -120,20 +123,21 @@
     "Most likely to go to heaven",
     "Most likely to get laid tonight"
   ];
-  const MAX_PER_Q = 2;
   const MAX_LEN = 30;
 
-  const answers = PROMPTS.map(() => []);   // [{id, text}]
+  const answers = PROMPTS.map(() => []);   // [{id, text, t}]
   const seen = new Set();
   const rows = [];
 
-  function getUsed() {
-    try { return JSON.parse(localStorage.getItem('darty-used') || '{}'); } catch (e) { return {}; }
+  // This browser's own answers: { [q]: { id, token, text } }. The token is what
+  // lets this browser (and only this browser) remove its answer.
+  function getMine() {
+    try { return JSON.parse(localStorage.getItem('darty-mine') || '{}'); } catch (e) { return {}; }
   }
-  function setUsed(u) {
-    try { localStorage.setItem('darty-used', JSON.stringify(u)); } catch (e) {}
+  function setMine(m) {
+    try { localStorage.setItem('darty-mine', JSON.stringify(m)); } catch (e) {}
   }
-  let used = getUsed();
+  let mine = getMine();
 
   function showBanner(msg) {
     const b = document.getElementById('banner');
@@ -141,6 +145,7 @@
   }
 
   const arrow = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true"><path d="M4 12h15M13 5l7 7-7 7"/></svg>';
+  const cross = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
   function build() {
     const list = document.getElementById('list');
@@ -157,7 +162,7 @@
           '<div class="side">' +
             '<div class="field">' +
               '<input id="q' + i + '" type="text" maxlength="' + MAX_LEN + '" autocomplete="off" autocapitalize="words" enterkeyhint="send" placeholder="Who?">' +
-              '<button class="send" type="button" aria-label="Submit answer" disabled>' + arrow + '</button>' +
+              '<button class="send" type="button"></button>' +
             '</div>' +
             '<span class="note"></span>' +
           '</div>' +
@@ -169,7 +174,7 @@
       const input = row.querySelector('input');
       const btn = row.querySelector('button');
       const note = row.querySelector('.note');
-      const r = { row, input, btn, note, pills: row.querySelector('.pills'), field: row.querySelector('.field') };
+      const r = { row, input, btn, note, pills: row.querySelector('.pills') };
       rows.push(r);
 
       input.addEventListener('input', () => {
@@ -179,39 +184,71 @@
         note.textContent = len >= 20 ? len + '/' + MAX_LEN : '';
       });
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send(i); } });
-      btn.addEventListener('click', () => send(i));
-      refreshLimit(i);
+      btn.addEventListener('click', () => (mine[i] ? unsend(i) : send(i)));
+      setState(i);
     });
   }
 
-  function refreshLimit(i) {
+  // Answered: input locked showing your answer, button removes it.
+  // Not answered: input open, button sends.
+  function setState(i) {
     const r = rows[i];
-    if ((used[i] || 0) >= MAX_PER_Q) {
-      r.field.style.display = 'none';
-      r.note.className = 'done';
-      r.note.textContent = 'Done';
+    if (mine[i]) {
+      r.input.value = mine[i].text;
+      r.input.disabled = true;
+      r.btn.className = 'send remove';
+      r.btn.innerHTML = cross;
+      r.btn.setAttribute('aria-label', 'Remove your answer');
+      r.btn.disabled = false;
+    } else {
+      r.input.disabled = false;
+      r.btn.className = 'send';
+      r.btn.innerHTML = arrow;
+      r.btn.setAttribute('aria-label', 'Submit answer');
+      r.btn.disabled = r.input.value.trim().length === 0;
     }
+  }
+
+  function flash(r, msg, isError) {
+    r.note.className = 'note' + (isError ? ' limit' : '');
+    r.note.textContent = msg;
+    if (!isError) setTimeout(() => { if (r.note.textContent === msg) r.note.textContent = ''; }, 1800);
   }
 
   async function send(i) {
     const r = rows[i];
     const text = r.input.value.trim().slice(0, MAX_LEN);
-    if (!text || (used[i] || 0) >= MAX_PER_Q) return;
+    if (!db || !text || mine[i]) return;
     r.btn.disabled = true;
-    const { data, error } = await db.from('answers').insert({ q: i, text: text }).select().single();
-    if (error) {
+    const { data, error } = await db.rpc('submit_answer', { p_q: i, p_text: text });
+    if (error || !data) {
       r.btn.disabled = false;
-      r.note.className = 'note limit';
-      r.note.textContent = 'Didn’t send. Try again.';
+      flash(r, 'Didn’t send. Try again.', true);
       return;
     }
-    used[i] = (used[i] || 0) + 1; setUsed(used);
-    r.input.value = '';
-    r.note.className = 'note';
-    r.note.textContent = 'Sent';
-    setTimeout(() => { if (r.note.textContent === 'Sent') r.note.textContent = ''; }, 1800);
+    mine[i] = { id: data.id, token: data.token, text: data.text }; setMine(mine);
+    setState(i);
+    flash(r, 'Sent');
     add(data, true);
-    refreshLimit(i);
+  }
+
+  async function unsend(i) {
+    const r = rows[i];
+    const m = mine[i];
+    if (!db || !m) return;
+    r.btn.disabled = true;
+    const { error } = await db.rpc('delete_answer', { p_id: m.id, p_token: m.token });
+    if (error) {
+      r.btn.disabled = false;
+      flash(r, 'Couldn’t remove. Try again.', true);
+      return;
+    }
+    remove(m.id);
+    delete mine[i]; setMine(mine);
+    r.input.value = m.text;       // keep the text so a typo is a quick fix
+    setState(i);
+    flash(r, 'Removed');
+    r.input.focus();
   }
 
   function add(rec, fresh) {
@@ -219,7 +256,13 @@
     seen.add(rec.id);
     answers[rec.q].push({ id: rec.id, text: rec.text, t: Date.parse(rec.created_at) || Date.now() });
     renderPills(rec.q, fresh ? rec.text : null);
-    renderTotal();
+  }
+
+  function remove(id) {
+    for (let q = 0; q < answers.length; q++) {
+      const n = answers[q].findIndex((a) => a.id === id);
+      if (n !== -1) { answers[q].splice(n, 1); renderPills(q, null); return; }
+    }
   }
 
   function renderPills(i, freshText) {
@@ -233,16 +276,12 @@
     const freshKey = freshText ? freshText.toLowerCase().replace(/\s+/g, ' ') : null;
     const box = rows[i].pills;
     box.innerHTML = '';
-    sorted.forEach((g, n) => {
+    sorted.forEach((g) => {
       const s = document.createElement('span');
       s.className = 'pill' + (g.key === freshKey ? ' new' : '');
       s.textContent = g.count > 1 ? g.text + ' ×' + g.count : g.text;
       box.appendChild(s);
     });
-  }
-
-  function renderTotal() {
-
   }
 
   let db;
@@ -255,11 +294,19 @@
     db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const { data, error } = await db.from('answers').select('id,q,text,created_at').order('created_at', { ascending: true }).limit(5000);
-    if (error) { showBanner('Couldn’t load answers. Refresh to try again.'); }
+    if (error) { showBanner('Couldn’t load answers. Refresh to try again.'); return; }
     (data || []).forEach((rec) => add(rec, false));
+
+    // Forget answers of ours that no longer exist (e.g. the board was cleared).
+    let changed = false;
+    Object.keys(mine).forEach((q) => {
+      if (!seen.has(mine[q].id)) { delete mine[q]; rows[q].input.value = ''; setState(+q); changed = true; }
+    });
+    if (changed) setMine(mine);
 
     db.channel('answers-feed')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'answers' }, (payload) => add(payload.new, true))
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'answers' }, (payload) => payload.old && remove(payload.old.id))
       .subscribe();
   }
   start();
